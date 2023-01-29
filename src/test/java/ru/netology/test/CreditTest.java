@@ -5,11 +5,14 @@ import com.codeborne.selenide.logevents.SelenideLogger;
 import io.qameta.allure.selenide.AllureSelenide;
 import org.junit.jupiter.api.*;
 import ru.netology.data.DataHelper;
+import ru.netology.data.DbUtils;
 import ru.netology.pages.CreditPage;
 import ru.netology.pages.StartPage;
 
-import static com.codeborne.selenide.Selenide.closeWindow;
+import java.sql.SQLException;
+
 import static com.codeborne.selenide.Selenide.open;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class CreditTest {
     StartPage startPage = open("http://localhost:8080/", StartPage.class);
@@ -29,36 +32,41 @@ public class CreditTest {
         Configuration.holdBrowserOpen = true;
     }
 
-    @AfterEach
-    void tearDown() {
-        closeWindow();
+    @BeforeEach
+    public void openPage() throws SQLException {
+        DbUtils.clearTables();
+        String url = System.getProperty("sut.url");
+        open(url);
     }
 
     @Test
-    void shouldMakeSuccessTransactionByActiveCard() {
+    void shouldMakeSuccessTransactionByApprovedCard() throws SQLException {
         startPage.creditPage();
         var cardInfo = DataHelper.generatedDataIfApprovedCard();
         var creditPage = new CreditPage();
         creditPage.insertCardData(cardInfo);
         creditPage.confirmationOfBank();
+        assertEquals("APPROVED", DbUtils.findCreditStatus());
     }
     
     @Test
-    void shouldDeclineIfRandomNumberCard() {
+    void shouldDeclineIfRandomNumberCard() throws SQLException {
         startPage.creditPage();
         var cardInfo = DataHelper.generatedDataIfRandomCard();
         var creditPage = new CreditPage();
         creditPage.insertCardData(cardInfo);
         creditPage.errorRestricted();
+        assertEquals("0", DbUtils.countRecords());
     }
 
     @Test
-    void shouldDeclineIfDeclinedCreditCard() {
+    void shouldDeclineIfRestrictedCreditCard() throws SQLException {
         startPage.creditPage();
         var cardInfo = DataHelper.generatedDataIfDeclinedCard();
         var creditPage = new CreditPage();
         creditPage.insertCardData(cardInfo);
         creditPage.errorRestricted();
+        assertEquals("DECLINED", DbUtils.findCreditStatus());
     }
 
     @Test
@@ -120,11 +128,11 @@ public class CreditTest {
     @Test
     void shouldDeclineIfZeroMonth00() {
         startPage.creditPage();
-        var validYear = Integer.parseInt(DataHelper.getCurrentYear()) + 1;
+        var validYear = Integer.parseInt(DataHelper.getCurrentYear());
         var cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear("00", String.valueOf(validYear));
         var creditPage = new CreditPage();
         creditPage.insertCardData(cardInfo);
-        creditPage.errorRestricted();
+        creditPage.wrongMonth("Неверный формат");
     }
 
     @Test
@@ -152,10 +160,7 @@ public class CreditTest {
     @Test
     void shouldDeclineIfPreviousYear() {
         startPage.creditPage();
-        var currentMonth = Integer.parseInt(DataHelper.getCurrentMonth());
-        var pastYear = Integer.parseInt(DataHelper.getCurrentYear()) - 1;
-        var cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear
-                (String.valueOf(currentMonth), String.valueOf(pastYear));
+        var cardInfo = DataHelper.getInvalidExpDateCard(-12);
         var creditPage = new CreditPage();
         creditPage.insertCardData(cardInfo);
         creditPage.wrongYear("Истёк срок действия карты");
@@ -164,23 +169,10 @@ public class CreditTest {
     @Test
     void shouldDeclineIfPreviousMonth() {
         startPage.creditPage();
-        var currentMonth = Integer.parseInt(DataHelper.getCurrentMonth());
-        var pastMonth = 0;
-        var currentYearMinusMonth = Integer.parseInt(DataHelper.getCurrentYear());
-        if (currentMonth == 1) {
-            pastMonth = 12;
-            currentYearMinusMonth = currentYearMinusMonth - 1;
-        } else pastMonth = currentMonth - 1;
-        String previousMonthZero = "";
-        if (pastMonth < 10) {
-            previousMonthZero = "0" + pastMonth;
-        }
-
-        var cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear
-                (String.valueOf(previousMonthZero), String.valueOf(currentYearMinusMonth));
+        var cardInfo = DataHelper.getInvalidExpDateCard(-1);
         var creditPage = new CreditPage();
         creditPage.insertCardData(cardInfo);
-        creditPage.wrongMonth("Неверно указан срок действия карты");
+        creditPage.wrongYear("Истёк срок действия карты");
     }
 
     @Test
@@ -198,20 +190,7 @@ public class CreditTest {
     @Test
     void shouldMakeSuccessTransactionIfMaxAllowedDateMinusMonth() {
         startPage.creditPage();
-        var currentMonth = Integer.parseInt(DataHelper.getCurrentMonth());
-        var pastMonth = 0;
-        var maxYear = Integer.parseInt(DataHelper.getCurrentYear()) + 5;
-        if (currentMonth == 1) {
-            pastMonth = 12;
-            maxYear = maxYear - 1;
-        } else pastMonth = currentMonth - 1;
-        String previousMonthZero = "";
-        if (pastMonth < 10) {
-            previousMonthZero = "0" + pastMonth;
-        }
-
-        var cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear
-                (String.valueOf(previousMonthZero), String.valueOf(maxYear));
+        var cardInfo = DataHelper.getInvalidExpDateCard(49);
         var creditPage = new CreditPage();
         creditPage.insertCardData(cardInfo);
         creditPage.confirmationOfBank();
@@ -274,7 +253,7 @@ public class CreditTest {
     @Test
     void shouldDeclineIfNameHolderHasSpecialCharacters() {
         startPage.creditPage();
-        var cardInfo = DataHelper.generatedDataForParametrizedName("Ivan &6$%#@8");
+        var cardInfo = DataHelper.generatedDataForParametrizedName("Ivan &$%#@");
         var creditPage = new CreditPage();
         creditPage.insertCardData(cardInfo);
         creditPage.wrongName("Корректно введите имя с платежной карты");

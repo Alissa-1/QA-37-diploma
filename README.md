@@ -36,7 +36,7 @@
 2. Выполнить команду: `java -jar artifacts\aqa-shop.jar --spring.datasource.url=jdbc:mysql://localhost:3306/app`
 
 ### 1.7. Запуск SUT с подключением к PostgreSQL
-1. В IntelliJ IDEA открыть допjava -jar artifacts\aqa-shop.jar --spring.datasource.url=jdbc:postgresql://localhost:5432/appолнительную с терминалом кликом по кнопке +
+1. В IntelliJ IDEA открыть дополнительную с терминалом кликом по кнопке +
 2. Выполнить команду: `java -jar artifacts\aqa-shop.jar --spring.datasource.url=jdbc:postgresql://localhost:5432/app`
 
 ## 2. Запуск автотестов

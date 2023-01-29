@@ -6,15 +6,18 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.Value;
 
+import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.Locale;
 
 public class DataHelper {
     private static Faker faker = new Faker(new Locale("en"));
     private static String numberOfApprovedCard = "4444 4444 4444 4441";
     private static String numberOfDeclinedCard = "4444 4444 4444 4442";
-    private static int validYear = Integer.parseInt(getCurrentYear()) + 1;
+    private static int validYear = Integer.parseInt(getCurrentYear());
 
     public static String getCurrentYear() {
         LocalDate date = LocalDate.now();
@@ -25,8 +28,7 @@ public class DataHelper {
     public static String getCurrentMonth() {
         LocalDate date = LocalDate.now();
         String currentMonth = date.format(DateTimeFormatter.ofPattern("MM"));
-        String currentMonth1 = "12";
-        return currentMonth1;
+        return currentMonth;
     }
 
     public static CardInfo generatedDataIfApprovedCard() {
@@ -64,6 +66,18 @@ public class DataHelper {
         var randomName = faker.lorem().fixedString(length);
         var randomCVC = faker.number().digits(3);
         return new CardInfo(numberOfApprovedCard, getCurrentMonth(), String.valueOf(validYear), randomName, randomCVC);
+    }
+
+    public static CardInfo getInvalidExpDateCard(int months) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(new Date());
+        calendar.add(Calendar.MONTH, months);
+        String date =  new SimpleDateFormat("dd.MM.yy").format(calendar.getTime());
+        String month = new SimpleDateFormat("MM").format(calendar.getTime());
+        String year = new SimpleDateFormat("yy").format(calendar.getTime());
+        CardInfo cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear
+                (String.valueOf(month), String.valueOf(year));
+        return cardInfo;
     }
 
     @Value

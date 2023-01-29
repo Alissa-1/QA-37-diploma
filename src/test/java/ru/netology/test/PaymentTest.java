@@ -5,11 +5,14 @@ import com.codeborne.selenide.logevents.SelenideLogger;
 import io.qameta.allure.selenide.AllureSelenide;
 import org.junit.jupiter.api.*;
 import ru.netology.data.DataHelper;
+import ru.netology.data.DbUtils;
 import ru.netology.pages.StartPage;
 import ru.netology.pages.PaymentPage;
 
-import static com.codeborne.selenide.Selenide.closeWindow;
+import java.sql.SQLException;
+
 import static com.codeborne.selenide.Selenide.open;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class PaymentTest {
     StartPage startPage = open("http://localhost:8080/", StartPage.class);
@@ -29,37 +32,41 @@ public class PaymentTest {
         Configuration.holdBrowserOpen = true;
     }
 
-    @AfterEach
-    void tearDown() {
-        closeWindow();
+    @BeforeEach
+    public void openPage() throws SQLException {
+        DbUtils.clearTables();
+        String url = System.getProperty("sut.url");
+        open(url);
     }
 
-
     @Test
-    void shouldMakeSuccessTransactionByActiveCard() {
+    void shouldMakeSuccessTransactionByApprovedCard() throws SQLException {
         startPage.paymentPage();
         var cardInfo = DataHelper.generatedDataIfApprovedCard();
         var paymentPage = new PaymentPage();
         paymentPage.insertCardData(cardInfo);
         paymentPage.confirmationOfBank();
+        assertEquals("APPROVED", DbUtils.findPaymentStatus());
     }
 
     @Test
-    void shouldMakeDeclineIfRandom() {
+    void shouldMakeDeclineIfRandomNumberCard() throws SQLException {
         startPage.paymentPage();
         var cardInfo = DataHelper.generatedDataIfRandomCard();
         var paymentPage = new PaymentPage();
         paymentPage.insertCardData(cardInfo);
         paymentPage.errorRestricted();
+        assertEquals("0", DbUtils.countRecords());
     }
 
     @Test
-    void shouldMakeDeclineIfRestricted(){
+    void shouldMakeDeclineIfRestrictedCard() throws SQLException {
         startPage.paymentPage();
         var cardInfo = DataHelper.generatedDataIfDeclinedCard();
         var paymentPage = new PaymentPage();
         paymentPage.insertCardData(cardInfo);
         paymentPage.errorRestricted();
+        assertEquals("DECLINED", DbUtils.findPaymentStatus());
     }
 
     @Test
@@ -111,11 +118,11 @@ public class PaymentTest {
     @Test
     void shouldDeclineIfMonth00() {
         startPage.paymentPage();
-        var validYear = Integer.parseInt(DataHelper.getCurrentYear()) + 1;
+        var validYear = Integer.parseInt(DataHelper.getCurrentYear());
         var cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear("00", String.valueOf(validYear));
         var paymentPage = new PaymentPage();
         paymentPage.insertCardData(cardInfo);
-        paymentPage.errorRestricted();
+        paymentPage.wrongMonth("Неверный формат");
     }
 
     @Test
@@ -144,6 +151,7 @@ public class PaymentTest {
     void shouldMakeSuccessTransactionIfMaxAllowedDate() {
         startPage.paymentPage();
         var currentMonth = DataHelper.getCurrentMonth();
+        System.out.println(currentMonth);
         var maxYear = Integer.parseInt(DataHelper.getCurrentYear()) + 5;
         var cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear(currentMonth, String.valueOf(maxYear));
         var paymentPage = new PaymentPage();
@@ -154,10 +162,8 @@ public class PaymentTest {
     @Test
     void shouldDeclineIfPreviousYear() {
         startPage.paymentPage();
-        var currentMonth = Integer.parseInt(DataHelper.getCurrentMonth());
-        var previousYear = Integer.parseInt(DataHelper.getCurrentYear()) - 1;
-        var cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear
-                (String.valueOf(currentMonth), String.valueOf(previousYear));
+        var cardInfo = DataHelper.getInvalidExpDateCard(-12);
+        startPage.paymentPage();
         var paymentPage = new PaymentPage();
         paymentPage.insertCardData(cardInfo);
         paymentPage.attentionUnderYear("Истёк срок действия карты");
@@ -166,23 +172,10 @@ public class PaymentTest {
     @Test
     void shouldDeclineIfPreviousMonth() {
         startPage.paymentPage();
-        var currentMonth = Integer.parseInt(DataHelper.getCurrentMonth());
-        var previousMonth = 0;
-        var currentYearMinusMonth = Integer.parseInt(DataHelper.getCurrentYear());
-        if (currentMonth == 1) {
-            previousMonth = 12;
-            currentYearMinusMonth = currentYearMinusMonth - 1;
-        } else previousMonth = currentMonth - 1;
-        String previousMonthZero = "";
-        if (previousMonth < 10) {
-            previousMonthZero = "0" + previousMonth;
-        }
-
-        var cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear
-                (String.valueOf(previousMonthZero), String.valueOf(currentYearMinusMonth));
+        var cardInfo = DataHelper.getInvalidExpDateCard(-1);
         var paymentPage = new PaymentPage();
         paymentPage.insertCardData(cardInfo);
-        paymentPage.wrongMonth("Неверно указан срок действия карты");
+        paymentPage.attentionUnderYear("Истёк срок действия карты");
     }
 
     @Test
@@ -200,20 +193,7 @@ public class PaymentTest {
     @Test
     void shouldMakeSuccessTransactionIfMaxAllowedDateMinusMonth() {
         startPage.paymentPage();
-        var currentMonth = Integer.parseInt(DataHelper.getCurrentMonth());
-        var previousMonth = 0;
-        var maxYear = Integer.parseInt(DataHelper.getCurrentYear()) + 5;
-        if (currentMonth == 1) {
-            previousMonth = 12;
-            maxYear = maxYear - 1;
-        } else previousMonth = currentMonth - 1;
-        String previousMonthZero = "";
-        if (previousMonth < 10) {
-            previousMonthZero = "0" + previousMonth;
-        }
-
-        var cardInfo = DataHelper.approvedCardIfParametrizedMonthAndYear
-                (String.valueOf(previousMonthZero), String.valueOf(maxYear));
+        var cardInfo = DataHelper.getInvalidExpDateCard(49);
         var paymentPage = new PaymentPage();
         paymentPage.insertCardData(cardInfo);
         paymentPage.confirmationOfBank();
@@ -257,7 +237,7 @@ public class PaymentTest {
     }
 
     @Test
-    void shouldDeclineIfNameHolderInCyrillic (){
+    void shouldDeclineIfNameHolderOnCyrillic (){
         startPage.paymentPage();
         var cardInfo = DataHelper.generatedDataForParametrizedName("Иван Васильев");
         var paymentPage = new PaymentPage();
@@ -277,13 +257,13 @@ public class PaymentTest {
     @Test
     void shouldDeclineIfNameHolderIfSpecialCharacters (){
         startPage.paymentPage();
-        var cardInfo = DataHelper.generatedDataForParametrizedName("Ivan &6$%#@8");
+        var cardInfo = DataHelper.generatedDataForParametrizedName("Ivan &$%#@");
         var paymentPage = new PaymentPage();
         paymentPage.insertCardData(cardInfo);
         paymentPage.wrongName("Корректно введите имя с платежной карты");
     }
     @Test
-    void shouldDeclineIfNameHolderIfNumbers (){
+    void shouldDeclineIfNameHolderHasNumbers (){
         startPage.paymentPage();
         var cardInfo = DataHelper.generatedDataForParametrizedName("Ivan Vasi456lev");
         var paymentPage = new PaymentPage();
